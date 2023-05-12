@@ -1,0 +1,15 @@
+[project]
+name = "nonebot-plugin-msgbuf"
+version = "0.1.0"
+description = "适用于 NoneBot2 插件的被动消息构造集成"
+authors = [
+    {name = "HivertMoZara", email = "worldmozara@163.com"},
+]
+license = {text = "MIT"}
+dependencies = ["nonebot2>=2.0.0b1"]
+requires-python = ">=3.8"
+readme = "README.md"
+
+[project.urls]
+Homepage = "https://github.com/NCBM/nonebot-plugin-msgbuf"
+Repository = "https://github.com/NCBM/nonebot-plugin-msgbuf"
