@@ -50,6 +50,12 @@ nb plugin install nonebot-plugin-msgbuf
 
 ## 使用
 
+> 关于 `require()` 的使用问题：
+>
+> NoneBot2 插件的**首次**导入**必须**通过 NoneBot2 自身的方式（包括但不限于 `require()`, `load_plugin()` 等）完成，否则之后使用 NoneBot2 方式导入该插件的插件将**无法**正常工作。
+>
+> NoneBot2 插件体系要求**必须**使用 `require()` 加载插件依赖。
+
 这是常规的消息构造与发送方法：
 
 <details>
@@ -69,7 +75,7 @@ async def test():
 
 </details>
 
-***
+---
 
 这是 [SAA](https://github.com/felinae98/nonebot-plugin-send-anything-anywhere) 的消息构造与发送方法：
 
@@ -77,8 +83,11 @@ async def test():
 <summary>展开</summary>
 
 ```python
-from nonebot import on_message
+from nonebot import on_message, require
 from pathlib import Path
+
+require("nonebot_plugin_saa")
+
 from nonebot_plugin_saa import MessageFactory, Text, Image
 
 ma = on_message()
@@ -90,7 +99,7 @@ async def test():
 
 </details>
 
-***
+---
 
 这是 [SegBuilder](https://github.com/Well2333/nonebot-plugin-segbuilder) 的消息构造与发送方法：
 
@@ -114,13 +123,15 @@ async def test():
 
 </details>
 
-***
+---
 
 这是 MsgBuf 的消息构造与发送方法：
 
 ```python
-from nonebot import on_message
+from nonebot import on_message, require
 from pathlib import Path
+
+require("nonebot_plugin_msgbuf")
 
 from nonebot_plugin_msgbuf import MsgBuf
 
