@@ -3,12 +3,13 @@ from collections import deque
 from types import TracebackType
 from typing import (
     Any,        Deque,      Generic,    List,       Optional,   Type,
-    Union, cast
+    Union,      cast
 )
-from nonebot import logger
+from nonebot import logger, __version__ as nbver
 from nonebot.adapters import MessageSegment
 from nonebot.exception import ActionFailed
 from nonebot.matcher import current_bot, current_event
+from nonebot.plugin import PluginMetadata
 
 from .models import (
     Face,               File,               Image,              Location,
@@ -17,6 +18,29 @@ from .models import (
     Voice
 )
 from .platforms import _BotT, _EventT, Specs, find_proxy
+
+_extra_meta_source = {
+    "type": "library",
+    "homepage": "https://github.com/NCBM/nonebot-plugin-msgbuf"
+}
+
+if (
+    not nbver
+    or not nbver.startswith("2.0.0")
+    or not (_suf := nbver[5:])
+    or _suf[0] not in "abr"
+    or (_suf.startswith("rc") and int(_suf[2:]) > 4)
+):
+    _extra_meta = _extra_meta_source
+else:
+    _extra_meta = {"extra": _extra_meta_source}
+
+__plugin_meta__ = PluginMetadata(
+    name="信鸽巴夫",
+    description="适用于 NoneBot2 插件的被动消息构造集成",
+    usage="无",
+    **_extra_meta
+)
 
 
 class MessageBuffer(Generic[_BotT, _EventT]):
