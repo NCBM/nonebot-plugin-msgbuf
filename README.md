@@ -57,6 +57,8 @@ nb plugin install nonebot-plugin-msgbuf
 >
 > NoneBot2 插件体系要求**必须**使用 `require()` 加载插件依赖。
 
+### 竞品对比
+
 这是常规的消息构造与发送方法：
 
 <details>
@@ -165,4 +167,16 @@ async def test():
 @ma.handle()
 async def test():
     await MsgBuf().image(Path("image.png")).text("Hello world!").send()
+```
+
+### 使用 Go-CQHTTP 拓展
+
+```python
+from nonebot_plugin_msgbuf import Specs
+from pathlib import Path
+
+@ma.handle()
+async def test():
+    async with MsgBuf(specs=Specs.OB11_GOCQHTTP) as mb:
+        mb.image(Path("image.png")).text("Hello world!").file(Path("image.png"))
 ```
