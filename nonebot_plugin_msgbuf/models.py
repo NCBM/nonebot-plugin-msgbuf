@@ -43,6 +43,9 @@ class Single(Body):
 class Raw(Mutex):
     raw: Union[str, Message, MessageSegment]
 
+    def alternative(self) -> str:
+        return str(self.raw)
+
 
 @dataclass
 class Text(Body):
@@ -55,6 +58,23 @@ class Text(Body):
 @dataclass
 class Image(Body):
     image: SupportedFileData
+    name: str = ""
+
+    def __post_init__(self) -> None:
+        if self.name:
+            return
+        elif isinstance(self.image, (bytes, BytesIO)):
+            self.name = "image"
+        elif isinstance(self.image, Path):
+            self.name = self.image.name
+        elif self.image.startswith("base"):
+            self.name = "image"
+        else:
+            end = basename(self.image)
+            if self.image.startswith("http"):
+                pa = end.find('?')
+                end = end[:pa] if pa > 0 else end
+            self.name = end
 
     def alternative(self) -> str:
         return "[图片]"
@@ -91,6 +111,23 @@ class Face(Body):
 @dataclass
 class Voice(Mutex):
     voice: SupportedFileData
+    name: str = ""
+
+    def __post_init__(self) -> None:
+        if self.name:
+            return
+        elif isinstance(self.voice, (bytes, BytesIO)):
+            self.name = "voice"
+        elif isinstance(self.voice, Path):
+            self.name = self.voice.name
+        elif self.voice.startswith("base"):
+            raise ValueError("Cannot get file name")
+        else:
+            end = basename(self.voice)
+            if self.voice.startswith("http"):
+                pa = end.find('?')
+                end = end[:pa] if pa > 0 else end
+            self.name = end
 
     def alternative(self) -> str:
         return "[语音]"
@@ -99,6 +136,23 @@ class Voice(Mutex):
 @dataclass
 class Video(Mutex):
     video: SupportedFileData
+    name: str = ""
+
+    def __post_init__(self) -> None:
+        if self.name:
+            return
+        elif isinstance(self.video, (bytes, BytesIO)):
+            self.name = "video"
+        elif isinstance(self.video, Path):
+            self.name = self.video.name
+        elif self.video.startswith("base"):
+            raise ValueError("Cannot get file name")
+        else:
+            end = basename(self.video)
+            if self.video.startswith("http"):
+                pa = end.find('?')
+                end = end[:pa] if pa > 0 else end
+            self.name = end
 
     def alternative(self) -> str:
         return "[视频]"
@@ -115,9 +169,9 @@ class File(Mutex):
         elif isinstance(self.file, (bytes, BytesIO)):
             raise ValueError("Cannot get file name")
         elif isinstance(self.file, Path):
-            self.name = Path(self.file).name
+            self.name = self.file.name
         elif self.file.startswith("base"):
-            raise
+            raise ValueError("Cannot get file name")
         else:
             end = basename(self.file)
             if self.file.startswith("http"):

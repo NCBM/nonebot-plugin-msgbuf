@@ -1,12 +1,17 @@
+import asyncio
 from contextlib import suppress
+from io import BytesIO
+from pathlib import Path
 from typing import Any, Generic, List, NoReturn, Type, TypeVar, overload
 from nonebot import logger
 
 from nonebot.adapters import Bot, Event
 
+from .utils import async_fish_cache
+
 from .models import (
     Face, File, Image, Location, Mention, Model, Mutex, Raw,
-    Reply, Share, Text, Video, Voice
+    Reply, Share, SupportedFileData, Text, Video, Voice
 )
 
 _BotT = TypeVar("_BotT", bound=Bot)
@@ -15,7 +20,7 @@ _EventT = TypeVar("_EventT", bound=Event)
 
 class Specifications:
     PLATFORM_QQ = 1
-    OB11_GOCQHTTP = 1024
+    OB11_GOCQHTTP = 1024 + PLATFORM_QQ
 
     def __new__(cls) -> NoReturn:
         raise NotImplementedError  # refuse creating instance
@@ -39,7 +44,7 @@ class BaseProxy(Generic[_BotT, _EventT]):
         self.event = event
         self.specs = specs
 
-    def convert(self, seg: Model) -> str:
+    async def convert(self, seg: Model) -> str:
         return seg.alternative()
     
     async def send(
@@ -47,7 +52,9 @@ class BaseProxy(Generic[_BotT, _EventT]):
     ) -> List[Any]:
         return [
             await self.bot.send(
-                self.event, "".join(self.convert(seg) for seg in segs)
+                self.event, "".join(
+                    await asyncio.gather(*(self.convert(seg) for seg in segs))
+                )
             )
         ]
 
@@ -73,7 +80,7 @@ with suppress(ImportError):
     class OB11Proxy(BaseProxy[OB11Bot, OB11Event]):
         prefix = "nonebot.adapters.onebot.v11"
 
-        def convert(self, seg: Model) -> OB11MS:
+        async def convert(self, seg: Model) -> OB11MS:
             if isinstance(seg, Text):
                 return OB11MS.text(seg.text)
             elif isinstance(seg, Image):
@@ -142,16 +149,16 @@ with suppress(ImportError):
                         )
                     else:
                         call_result.append(
-                            await self.bot.send(self.event, self.convert(seg))
+                            await self.bot.send(self.event, await self.convert(seg))
                         )
                 else:
-                    if msg["reply"] and isinstance(seg, Image):
+                    if (self.specs & SPECS.PLATFORM_QQ) and msg["reply"] and isinstance(seg, Image):
                         logger.warning("Image 类型与 Reply 类型冲突，无法在一条内发送！")
                         call_result.append(
                             await self.bot.send(self.event, msg)
                         )
                         msg.clear()
-                    msg.append(self.convert(seg))
+                    msg.append(await self.convert(seg))
             if msg:
                 call_result.append(await self.bot.send(self.event, msg))
             return call_result
@@ -160,6 +167,100 @@ with suppress(ImportError):
     @overload
     def find_proxy(bot: OB11Bot) -> Type[OB11Proxy]:
         ...
+
+
+with suppress(ImportError):
+    from nonebot.adapters.onebot.v12 import (
+        Bot as OB12Bot,
+        Event as OB12Event,
+        Message as OB12Message,
+        MessageSegment as OB12MS
+    )
+
+    @async_fish_cache()
+    async def _ob12_upload_file(bot: OB12Bot, file: SupportedFileData, name: str) -> str:
+        if isinstance(file, str):
+            if "://" in file:
+                res = await bot.upload_file(type="url", name=name, url=file)
+            else:
+                res = await bot.upload_file(type="path", name=name, path=file)
+        elif isinstance(file, Path):
+            res = await bot.upload_file(type="path", name=name, path=str(file))
+        elif isinstance(file, bytes):
+            res = await bot.upload_file(type="bytes", name=name, data=file)
+        elif isinstance(file, BytesIO):
+            res = await bot.upload_file(type="bytes", name=name, data=file.getvalue())
+        else:
+            raise ValueError("不受支持的数据形式")
+        logger.info(f"成功上传文件 {name!r}")
+        return res["file_id"]
+
+    @register_proxy
+    class OB12Proxy(BaseProxy[OB12Bot, OB12Event]):
+        prefix = "nonebot.adapters.onebot.v12"
+
+        async def upload_file(self, file: SupportedFileData, name: str) -> str:
+            return await _ob12_upload_file(self.bot, file, name)
+
+        async def convert(self, seg: Model) -> OB12MS:
+            if isinstance(seg, Text):
+                return OB12MS.text(seg.text)
+            elif isinstance(seg, Mention):
+                return OB12MS.mention(seg.user_id)
+            elif isinstance(seg, Reply):
+                return OB12MS.reply(seg.msg_id)
+            elif isinstance(seg, Image):
+                return OB12MS.image(await self.upload_file(seg.image, seg.name))
+            elif isinstance(seg, Voice):
+                return OB12MS.voice(await self.upload_file(seg.voice, seg.name))
+            elif isinstance(seg, Video):
+                return OB12MS.video(await self.upload_file(seg.video, seg.name))
+            elif isinstance(seg, File):
+                return OB12MS.file(await self.upload_file(seg.file, seg.name))
+            elif isinstance(seg, Location):
+                return OB12MS.location(
+                    seg.lat, seg.lon, seg.title, seg.content
+                )
+            else:
+                return OB12MS.text(seg.alternative())
+            
+        async def send(self, *segs: Model, use_fallback: bool = False) -> List[Any]:
+            if use_fallback:
+                return await super().send(*segs)
+            call_result = []
+            msg = OB12Message()
+            for seg in segs:
+                if isinstance(seg, Mutex):
+                    if msg:
+                        logger.info(
+                            f"{seg.__class__.__name__} 类型与 Body 类型冲突，"
+                            "无法在一条内发送！"
+                        )
+                        call_result.append(
+                            await self.bot.send(self.event, msg)
+                        )
+                        msg.clear()
+                    if isinstance(seg, Raw) and isinstance(
+                        seg.raw, (str, OB12MS, OB12Message)
+                    ):
+                        call_result.append(
+                            await self.bot.send(self.event, seg.raw)
+                        )
+                    else:
+                        call_result.append(
+                            await self.bot.send(self.event, await self.convert(seg))
+                        )
+                else:
+                    if (self.specs & SPECS.PLATFORM_QQ) and msg["reply"] and isinstance(seg, Image):
+                        logger.warning("Image 类型与 Reply 类型冲突，无法在一条内发送！")
+                        call_result.append(
+                            await self.bot.send(self.event, msg)
+                        )
+                        msg.clear()
+                    msg.append(await self.convert(seg))
+            if msg:
+                call_result.append(await self.bot.send(self.event, msg))
+            return call_result
 
 
 @overload

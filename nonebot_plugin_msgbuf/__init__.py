@@ -122,12 +122,12 @@ class MessageBuffer(Generic[_BotT, _EventT]):
         self.msgbuf.extend(m)
         return self
     
-    def export(
+    async def export(
         self, convert: bool = False
     ) -> Union[List[MessageSegment], List[Model], List[str]]:
         if convert:
-            return list(
-                self.proxy.convert(s) for s in self.msgbuf
+            return await asyncio.gather(
+                *(self.proxy.convert(s) for s in self.msgbuf)
             )
         return list(self.msgbuf)
 
