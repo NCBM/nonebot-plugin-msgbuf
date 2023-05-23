@@ -263,6 +263,11 @@ with suppress(ImportError):
             return call_result
 
 
+    @overload
+    def find_proxy(bot: OB12Bot) -> Type[OB12Proxy]:
+        ...
+
+
 @overload
 def find_proxy(bot: Bot) -> Type[BaseProxy]:
     ...
