@@ -1,4 +1,3 @@
-from functools import partial
 from time import time
 from typing import Any, Awaitable, Callable, Dict, Generic, List, Tuple, TypeVar
 from typing_extensions import ParamSpec
@@ -25,4 +24,6 @@ class AsyncFishCache(Generic[_P, _V]):
 
 
 def async_fish_cache(onshelf: float = 86400.):
-    return partial(AsyncFishCache, onshelf=onshelf)
+    def __wrapper(func: Callable[_P, Awaitable[_V]]) -> AsyncFishCache[_P, _V]:
+        return AsyncFishCache(func, onshelf=onshelf)
+    return __wrapper
