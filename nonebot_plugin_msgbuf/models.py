@@ -83,6 +83,7 @@ class Image(Body):
 @dataclass
 class Mention(Body):
     user_id: str
+    domain: str = ""
 
     def alternative(self) -> str:
         return f"@{self.user_id} "

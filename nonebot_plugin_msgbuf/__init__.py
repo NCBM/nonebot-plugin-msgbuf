@@ -183,9 +183,9 @@ class MessageBuffer(Generic[_BotT, _EventT]):
         self.msgbuf.append(Image(image))
         return self
 
-    def mention(self, uid: Union[str, int]):
+    def mention(self, uid: Union[str, int], domain: str = ""):
         """追加提及 (At)"""
-        self.msgbuf.append(Mention(str(uid)))
+        self.msgbuf.append(Mention(str(uid), domain))
         return self
 
     def reply(self, mid: Union[str, int]):
