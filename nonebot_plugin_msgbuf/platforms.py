@@ -7,6 +7,8 @@ from nonebot import logger
 
 from nonebot.adapters import Bot, Event
 
+from nonebot_plugin_msgbuf.models import Model
+
 from .utils import async_fish_cache
 
 from .models import (
@@ -46,6 +48,12 @@ class BaseProxy(Generic[_BotT, _EventT]):
 
     async def convert(self, seg: Model) -> str:
         return seg.alternative()
+    
+    async def flush_with_log(self, msg, cres, log: str, log_level: str = "info"):
+        if msg:
+            logger.log(log_level, log)
+            cres.append(await self.bot.send(self.event, msg))
+            msg.clear()
     
     async def send(
         self, *segs: Model, use_fallback: bool = False
@@ -105,8 +113,7 @@ with suppress(ImportError):
                 return OB11MS.location(
                     seg.lat, seg.lon, seg.title or None, seg.content or None
                 )
-            else:
-                return OB11MS.text(seg.alternative())
+            return OB11MS.text(seg.alternative())
         
         async def send(self, *segs: Model, use_fallback: bool = False) -> List[Any]:
             if use_fallback:
@@ -115,15 +122,10 @@ with suppress(ImportError):
             msg = OB11Message()
             for seg in segs:
                 if isinstance(seg, Mutex):
-                    if msg:
-                        logger.info(
-                            f"{seg.__class__.__name__} 类型与 Body 类型冲突，"
-                            "无法在一条内发送！"
-                        )
-                        call_result.append(
-                            await self.bot.send(self.event, msg)
-                        )
-                        msg.clear()
+                    await self.flush_with_log(
+                        msg, call_result,
+                        f"{seg.__class__.__name__} 类型与 Body 类型冲突，无法在一条内发送！"
+                    )
                     if (
                         (self.specs & SPECS.OB11_GOCQHTTP)
                         and isinstance(seg, File)
@@ -153,16 +155,11 @@ with suppress(ImportError):
                         )
                 else:
                     if (self.specs & SPECS.PLATFORM_QQ) and msg["reply"] and isinstance(seg, Image):
-                        logger.warning("Image 类型与 Reply 类型冲突，无法在一条内发送！")
-                        call_result.append(
-                            await self.bot.send(self.event, msg)
-                        )
-                        msg.clear()
+                        await self.flush_with_log(msg, call_result, "Image 类型与 Reply 类型冲突，无法在一条内发送！")
                     msg.append(await self.convert(seg))
             if msg:
                 call_result.append(await self.bot.send(self.event, msg))
             return call_result
-
 
     @overload
     def find_proxy(bot: OB11Bot) -> Type[OB11Proxy]:
@@ -206,7 +203,7 @@ with suppress(ImportError):
             if isinstance(seg, Text):
                 return OB12MS.text(seg.text)
             elif isinstance(seg, Mention):
-                return OB12MS.mention(seg.user_id)
+                return OB12MS.mention(seg.user_id) if seg.user_id != "@all" else OB12MS.mention_all()
             elif isinstance(seg, Reply):
                 return OB12MS.reply(seg.msg_id)
             elif isinstance(seg, Image):
@@ -221,8 +218,7 @@ with suppress(ImportError):
                 return OB12MS.location(
                     seg.lat, seg.lon, seg.title, seg.content
                 )
-            else:
-                return OB12MS.text(seg.alternative())
+            return OB12MS.text(seg.alternative())
             
         async def send(self, *segs: Model, use_fallback: bool = False) -> List[Any]:
             if use_fallback:
@@ -231,15 +227,7 @@ with suppress(ImportError):
             msg = OB12Message()
             for seg in segs:
                 if isinstance(seg, Mutex):
-                    if msg:
-                        logger.info(
-                            f"{seg.__class__.__name__} 类型与 Body 类型冲突，"
-                            "无法在一条内发送！"
-                        )
-                        call_result.append(
-                            await self.bot.send(self.event, msg)
-                        )
-                        msg.clear()
+                    await self.flush_with_log(msg, call_result, f"{seg.__class__.__name__} 类型与 Body 类型冲突，无法在一条内发送！")
                     if isinstance(seg, Raw) and isinstance(
                         seg.raw, (str, OB12MS, OB12Message)
                     ):
@@ -252,19 +240,68 @@ with suppress(ImportError):
                         )
                 else:
                     if (self.specs & SPECS.PLATFORM_QQ) and msg["reply"] and isinstance(seg, Image):
-                        logger.warning("Image 类型与 Reply 类型冲突，无法在一条内发送！")
-                        call_result.append(
-                            await self.bot.send(self.event, msg)
-                        )
-                        msg.clear()
+                        await self.flush_with_log(msg, call_result, "Image 类型与 Reply 类型冲突，无法在一条内发送！")
                     msg.append(await self.convert(seg))
             if msg:
                 call_result.append(await self.bot.send(self.event, msg))
             return call_result
 
-
     @overload
     def find_proxy(bot: OB12Bot) -> Type[OB12Proxy]:
+        ...
+
+
+with suppress(ImportError):
+    from nonebot.adapters.qqguild import (
+        Bot as QGBot,
+        Event as QGEvent,
+        Message as QGMessage,
+        MessageSegment as QGMS
+    )
+
+    @register_proxy
+    class QGProxy(BaseProxy[QGBot, QGEvent]):
+        prefix = "nonebot.adapters.qqguild"
+
+        async def convert(self, seg: Model) -> QGMS:
+            if isinstance(seg, Text):
+                return QGMS.text(seg.text)
+            elif isinstance(seg, Image):
+                return QGMS.image(seg.image) if isinstance(seg.image, str) else QGMS.file_image(seg.image)
+            elif isinstance(seg, Mention):
+                if seg.domain == "channel":
+                    return QGMS.mention_channel(int(seg.user_id)) 
+                return  QGMS.mention_user(int(seg.user_id))
+            elif isinstance(seg, Reply):
+                return QGMS.reference(seg.msg_id)
+            elif isinstance(seg, Face):
+                return QGMS.emoji(seg.face_id)
+            return QGMS.text(seg.alternative())
+
+        async def send(self, *segs: Model, use_fallback: bool = False) -> List[Any]:
+            if use_fallback:
+                return await super().send(*segs)
+            call_result = []
+            msg = QGMessage()
+            for seg in segs:
+                if isinstance(seg, Image) and (msg["attachment"] or msg["file_image"]):
+                    await self.flush_with_log(msg, call_result, "Image 类型数量受限，无法在一条内发送！")
+                elif isinstance(seg, Reply) and msg["reference"]:
+                    await self.flush_with_log(msg, call_result, "Reply 类型数量受限，无法在一条内发送！")
+                elif isinstance(seg, Raw) and isinstance(
+                    seg.raw, (str, QGMS, QGMessage)
+                ):
+                    await self.flush_with_log(msg, call_result, "Raw 类型无法在一条内发送！")
+                    call_result.append(
+                        await self.bot.send(self.event, seg.raw)
+                    )
+                msg.append(await self.convert(seg))
+            if msg:
+                call_result.append(await self.bot.send(self.event, msg))
+            return call_result
+
+    @overload
+    def find_proxy(bot: QGBot) -> Type[QGProxy]:
         ...
 
 
