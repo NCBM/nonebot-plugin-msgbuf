@@ -172,6 +172,8 @@ async def test():
 
 ### 使用 Go-CQHTTP 拓展
 
+#### 发送文件
+
 ```python
 from nonebot_plugin_msgbuf import Specs
 from pathlib import Path
@@ -179,5 +181,24 @@ from pathlib import Path
 @ma.handle()
 async def test():
     async with MsgBuf(specs=Specs.OB11_GOCQHTTP) as mb:
-        mb.image(Path("image.png")).text("Hello world!").file(Path("image.png"))
+        mb.file(Path("image.png"))
+```
+
+#### 发送合并转发
+
+```python
+from nonebot.adapters.onebot.v11 import Bot
+from nonebot_plugin_msgbuf import FwdBuf
+
+@ma.handle()
+async def test(bot: Bot):
+    async with FwdBuf(bot, ("group", 114514)) as fb:
+        async with fb.node(1919810, "homo") as n:
+            n.text("114514")
+            n.image("file://homo.jpg")
+        async with fb.node(1919810, "homo") as n:
+            async with n.node(1919810, "homo") as n1:
+                n1.text("homo")
+            async with n.node(1919810, "homo") as n1:
+                n1.text("1919810")
 ```
