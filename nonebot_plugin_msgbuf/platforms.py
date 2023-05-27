@@ -1,16 +1,17 @@
 import asyncio
+from collections import deque
 from contextlib import suppress
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Generic, List, NoReturn, Type, TypeVar, overload
+from types import TracebackType
+from typing import Any, Deque, Generic, List, Literal, NoReturn, Optional, Tuple, Type, TypeVar, Union, overload
 from nonebot import logger
 
 from nonebot.adapters import Bot, Event
+from nonebot.exception import ActionFailed
 
-from nonebot_plugin_msgbuf.models import Model
-
+from .base import MsgBufManager
 from .utils import async_fish_cache
-
 from .models import (
     Face, File, Image, Location, Mention, Model, Mutex, Raw,
     Reply, Share, SupportedFileData, Text, Video, Voice
@@ -81,7 +82,8 @@ with suppress(ImportError):
         Bot as OB11Bot,
         Event as OB11Event,
         Message as OB11Message,
-        MessageSegment as OB11MS
+        MessageSegment as OB11MS,
+        MessageEvent as OB11MsgEv
     )
 
     @register_proxy
@@ -164,6 +166,178 @@ with suppress(ImportError):
     @overload
     def find_proxy(bot: OB11Bot) -> Type[OB11Proxy]:
         ...
+
+    class ForwardNode(MsgBufManager):
+        """转发消息节点构造器"""
+
+        def __init__(
+            self, fb: "ForwardBuffer", uid: int, name: str,
+            fn: Optional["ForwardNode"] = None, allow_incomplete: bool = False
+        ) -> None:
+            self.fb, self.fn = fb, fn
+            self.uid, self.name = uid, name
+            self.allow_incomplete = allow_incomplete
+            super().__init__()
+
+        async def __aenter__(self):
+            return self
+        
+        async def __aexit__(
+            self,
+            exc_tp: Optional[Type[BaseException]],
+            exc_val: Optional[BaseException],
+            exc_tb: Optional[TracebackType]
+        ) -> Optional[bool]:
+            if exc_tb and not self.allow_incomplete:
+                return False
+            if self.fn is not None:
+                self.fn.msgbuf.append(
+                    OB11MS(
+                        "node",
+                        {"uin": self.uid, "name": self.name, "content": await self.export()}
+                    )
+                )
+            else:
+                self.fb.fwdbuf.append(
+                    OB11MS(
+                        "node",
+                        {"uin": self.uid, "name": self.name, "content": await self.export()}
+                    )
+                )
+            
+        def node(self, uid: int, name: str) -> "ForwardNode":
+            """
+            创建消息节点
+
+            - uid: （显示的）节点发送者 QQ 号（决定发送者头像）
+            - name: （显示的）昵称
+            """
+            return ForwardNode(self.fb, uid, name, self, allow_incomplete=self.allow_incomplete)
+
+        async def export(self) -> List[OB11MS]:
+            return await asyncio.gather(
+                *(self.fb.proxy.convert(s) for s in self.msgbuf)
+            )
+
+    class ForwardBuffer:
+        """转发消息构造器"""
+
+        def __init__(
+            self,
+            bot: OB11Bot,
+            dest: Tuple[Literal["private", "group"], int],
+            *,
+            send: bool = True, send_incomplete: bool = False,
+            retry: int = 0, cooldown: float = 5.
+        ) -> None:
+            """
+            初始化转发消息构造器
+
+            - bot: 机器人对象
+            - dest: 发送目标
+            - send: 是否进行发送
+            - send_incomplete: 是否在上下文内部出错后仍发送
+            - retry: 重试次数
+            - cooldown: 重试冷却
+            """
+            self.bot = bot
+            self.dest = dest
+            self.proxy = find_proxy(bot)(bot, None)  # type: ignore
+            self.fwdbuf: Deque[OB11MS] = deque()
+            self.ifsend = send
+            self.send_incomplete = send_incomplete
+            self.retry = retry
+            self.cooldown = cooldown
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(
+            self,
+            exc_tp: Optional[Type[BaseException]],
+            exc_val: Optional[BaseException],
+            exc_tb: Optional[TracebackType]
+        ) -> Optional[bool]:
+            if (
+                self.ifsend                                 # send switch
+                and (not exc_tb or self.send_incomplete)    # noerror or inc.
+                and self.fwdbuf                             # not empty
+            ):
+                await self.send()
+            if exc_tb:
+                return False
+            
+        def node(self, uid: int, name: str) -> ForwardNode:
+            """
+            创建消息节点
+
+            - uid: （显示的）节点发送者 QQ 号（决定发送者头像）
+            - name: （显示的）昵称
+            """
+            return ForwardNode(self, uid, name, allow_incomplete=self.send_incomplete)
+
+        @overload
+        async def get_sender_name(
+            self, *,
+            uid: int,
+            gid: Optional[int] = None,
+            cache: bool = True
+        ) -> str:
+            ...
+
+        @overload
+        async def get_sender_name(
+            self, *,
+            event: OB11Event,
+            cache: bool = True
+        ) -> str:
+            ...
+
+        async def get_sender_name(
+            self, *,
+            uid: Optional[int] = None,
+            gid: Optional[int] = None,
+            event: Optional[OB11Event] = None,
+            cache: bool = True
+        ) -> str:
+            """获取用户名称"""
+            if event and cache:
+                uid = getattr(event, "user_id", event.self_id)
+                if isinstance(event, OB11MsgEv):
+                    return event.sender.card or event.sender.nickname or str(uid)
+                gid = getattr(event, "group_id", None)
+            if uid is None:
+                raise ValueError("无有效用户 ID")
+            elif gid is not None:
+                info = await self.bot.get_group_member_info(
+                    group_id=gid, user_id=uid, no_cache=not cache
+                )
+                return str(info["card"] or info["nickname"])
+            else:
+                return (await self.bot.get_stranger_info(user_id=uid, no_cache=not cache))["nickname"]
+
+        async def send(self) -> Any:
+            """发送消息"""
+            dtype, did = self.dest
+            if dtype == "group":
+                sender = self.bot.send_group_forward_msg
+                kwds = {"group_id": did, "messages": self.fwdbuf}
+            else:
+                sender = self.bot.send_private_forward_msg
+                kwds = {"user_id": did, "messages": self.fwdbuf}
+
+            try:
+                res = await sender(**kwds)
+                logger.success("消息发送成功！")
+                return res
+            except ActionFailed:
+                if self.retry > 0:
+                    logger.warning(f"消息发送失败，剩余 {self.retry} 次重试。")
+                    await asyncio.sleep(self.cooldown)
+                    self.retry -= 1
+                    return await self.send()
+                logger.error("消息发送失败！")
+                raise
 
 
 with suppress(ImportError):
@@ -306,7 +480,7 @@ with suppress(ImportError):
 
 
 @overload
-def find_proxy(bot: Bot) -> Type[BaseProxy]:
+def find_proxy(bot: _BotT) -> Type[BaseProxy[_BotT, Any]]:
     ...
 
 

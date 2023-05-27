@@ -11,13 +11,12 @@ from nonebot.exception import ActionFailed
 from nonebot.matcher import current_bot, current_event
 from nonebot.plugin import PluginMetadata
 
+from .base import MsgBufManager
 from .models import (
-    Face,               File,               Image,              Location,
-    Mention,            Model,              Raw,                Reply,
-    Share,              SupportedFileData,  Text,               Video,
-    Voice
+    Face,       File,       Image,      Location,   Mention,    Model,
+    Raw,        Reply,      Share,      Text,       Video,      Voice
 )
-from .platforms import _BotT, _EventT, Specs, find_proxy
+from .platforms import _BotT, _EventT, ForwardBuffer, Specs, find_proxy
 
 _extra_meta_source = {
     "type": "library",
@@ -43,7 +42,7 @@ __plugin_meta__ = PluginMetadata(
 )
 
 
-class MessageBuffer(Generic[_BotT, _EventT]):
+class MessageBuffer(Generic[_BotT, _EventT], MsgBufManager):
     """消息构造器"""
 
     def __init__(
@@ -61,7 +60,7 @@ class MessageBuffer(Generic[_BotT, _EventT]):
         - bot: 机器人对象
         - event: 响应事件
         - specs: 特殊规则
-        - send: 是否进行发送（需要异步上下文）
+        - send: 是否进行发送
         - send_incomplete: 是否在上下文内部出错后仍发送
         - retry: 重试次数
         - fallback: 后备（通常是纯文本）重试次数
@@ -79,25 +78,9 @@ class MessageBuffer(Generic[_BotT, _EventT]):
         self.fallback = fallback
         self.cooldown = cooldown
 
-    def __enter__(self):
-        return self
-
     async def __aenter__(self):
         return self
 
-    def __exit__(
-        self,
-        exc_tp: Optional[Type[BaseException]],
-        exc_val: Optional[BaseException],
-        exc_tb: Optional[TracebackType]
-    ) -> Optional[bool]:
-        if exc_tb and not self.send_incomplete:
-            return False
-        if self.ifsend:
-            logger.warning("未使用异步上下文，无法发送消息！")
-        if exc_tb:
-            return False
-    
     async def __aexit__(
         self,
         exc_tp: Optional[Type[BaseException]],
@@ -113,15 +96,6 @@ class MessageBuffer(Generic[_BotT, _EventT]):
         if exc_tb:
             return False
 
-    def __lshift__(self, __o: Model):
-        self.msgbuf.append(__o)
-        return self
-
-    def add(self, *m: Model):
-        """批量插入消息结构"""
-        self.msgbuf.extend(m)
-        return self
-    
     async def export(
         self, convert: bool = False
     ) -> Union[List[MessageSegment], List[Model], List[str]]:
@@ -130,16 +104,6 @@ class MessageBuffer(Generic[_BotT, _EventT]):
                 *(self.proxy.convert(s) for s in self.msgbuf)
             )
         return list(self.msgbuf)
-
-    def revert(self, n: int = 1):
-        """
-        从末尾删除消息结构
-        
-        - n: 删除个数
-        """
-        for _ in range(n):
-            self.msgbuf.pop()
-        return self
 
     async def send(self, *, use_fallback: bool = False) -> List[Any]:
         """
@@ -166,72 +130,20 @@ class MessageBuffer(Generic[_BotT, _EventT]):
                 return await self.send(use_fallback=True)
             logger.error("消息发送失败！")
             raise
-    
+
     async def flush(self):
         """发送当前缓冲的消息并清空缓冲区"""
         res = await self.send()
         self.msgbuf.clear()
         return res
 
-    def text(self, text: str):
-        """追加普通文本"""
-        self.msgbuf.append(Text(text))
-        return self
-
-    def image(self, image: SupportedFileData):
-        """追加图片"""
-        self.msgbuf.append(Image(image))
-        return self
-
-    def mention(self, uid: Union[str, int], domain: str = ""):
-        """追加提及 (At)"""
-        self.msgbuf.append(Mention(str(uid), domain))
-        return self
-
-    def reply(self, mid: Union[str, int]):
-        """追加回复"""
-        self.msgbuf.append(Reply(str(mid)))
-        return self
-
-    def face(self, fid: Union[str, int]):
-        """追加表情"""
-        self.msgbuf.append(Face(str(fid)))
-        return self
-
-    def voice(self, voice: SupportedFileData):
-        """追加语音"""
-        self.msgbuf.append(Voice(voice))
-        return self
-
-    def video(self, video: SupportedFileData):
-        """追加视频"""
-        self.msgbuf.append(Video(video))
-        return self
-
-    def file(self, file: SupportedFileData, name: str = ""):
-        """追加文件"""
-        self.msgbuf.append(File(file, name))
-        return self
-    
-    def share(self, url: str, title: str, content: str = "", image: str = ""):
-        """追加分享"""
-        self.msgbuf.append(Share(url, title, content, image))
-        return self
-    
-    def location(
-        self,
-        latitude: float, lontitude: float,
-        title: str = "", content: str = ""
-    ):
-        """追加地理位置"""
-        self.msgbuf.append(Location(latitude, lontitude, title, content))
-        return self
-
 
 MsgBuf = MessageBuffer
+FwdBuf = ForwardBuffer
 
 __all__ = (
     "Face",     "File",     "Image",    "Location", "Mention",  "Raw",
     "Reply",    "Share",    "Text",     "Video",    "Voice",
-    "MessageBuffer",        "MsgBuf",               "Specs"
+    "MessageBuffer",        "MsgBuf",               "Specs",
+    "ForwardBuffer",        "FwdBuf"
 )
