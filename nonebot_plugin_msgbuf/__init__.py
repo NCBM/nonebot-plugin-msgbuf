@@ -1,5 +1,6 @@
 import asyncio
 from collections import deque
+from contextlib import suppress
 from types import TracebackType
 from typing import (
     Any,        Deque,      Generic,    List,       Optional,   Type,
