@@ -16,11 +16,12 @@ from .models import (
     Face,       File,       Image,      Location,   Mention,    Model,
     Raw,        Reply,      Share,      Text,       Video,      Voice
 )
-from .platforms import _BotT, _EventT, ForwardBuffer, Specs, find_proxy
+from .platforms import _BotT, _EventT, Specs, find_proxy
 
 _extra_meta_source = {
     "type": "library",
-    "homepage": "https://github.com/NCBM/nonebot-plugin-msgbuf"
+    "homepage": "https://github.com/NCBM/nonebot-plugin-msgbuf",
+    "supported_adapters": {"~onebot.v11", "~onebot.v12", "~qqguild"}
 }
 
 if (
@@ -139,11 +140,14 @@ class MessageBuffer(Generic[_BotT, _EventT], MsgBufManager):
 
 
 MsgBuf = MessageBuffer
-FwdBuf = ForwardBuffer
 
 __all__ = (
     "Face",     "File",     "Image",    "Location", "Mention",  "Raw",
     "Reply",    "Share",    "Text",     "Video",    "Voice",
     "MessageBuffer",        "MsgBuf",               "Specs",
-    "ForwardBuffer",        "FwdBuf"
 )
+
+with suppress(ImportError):
+    from .platforms import ForwardBuffer
+    FwdBuf = ForwardBuffer
+    __all__ += ("ForwardBuffer", "FwdBuf")
