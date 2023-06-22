@@ -4,14 +4,13 @@ from contextlib import suppress
 from io import BytesIO
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Deque, Generic, List, Literal, NoReturn, Optional, Tuple, Type, TypeVar, Union, overload
+from typing import Any, Deque, Generic, List, Literal, NoReturn, Optional, Tuple, Type, TypeVar, cast, overload
 from nonebot import logger
 
 from nonebot.adapters import Bot, Event
 from nonebot.exception import ActionFailed
 
 from .base import MsgBufManager
-from .utils import async_fish_cache
 from .models import (
     Face, File, Image, Location, Mention, Model, Mutex, Raw,
     Reply, Share, SupportedFileData, Text, Video, Voice
@@ -113,6 +112,8 @@ with suppress(ImportError):
                 return OB11MS.location(
                     seg.lat, seg.lon, seg.title or None, seg.content or None
                 )
+            elif isinstance(seg, Raw) and seg.raw.__module__.startswith(self.prefix):
+                return cast(OB11MS, seg.raw)
             return OB11MS.text(seg.alternative())
         
         async def send(self, *segs: Model, use_fallback: bool = False) -> List[Any]:
@@ -190,9 +191,11 @@ with suppress(ImportError):
                 return False
             if self.fn is not None:
                 self.fn.msgbuf.append(
-                    OB11MS(
-                        "node",
-                        {"uin": self.uid, "name": self.name, "content": await self.export()}
+                    Raw(
+                        OB11MS(
+                            "node",
+                            {"uin": self.uid, "name": self.name, "content": await self.export()}
+                        )
                     )
                 )
             else:
@@ -388,6 +391,8 @@ with suppress(ImportError):
                 return OB12MS.location(
                     seg.lat, seg.lon, seg.title, seg.content
                 )
+            elif isinstance(seg, Raw) and seg.raw.__module__.startswith(self.prefix):
+                return cast(OB12MS, seg.raw)
             return OB12MS.text(seg.alternative())
             
         async def send(self, *segs: Model, use_fallback: bool = False) -> List[Any]:
@@ -445,6 +450,8 @@ with suppress(ImportError):
                 return QGMS.reference(seg.msg_id)
             elif isinstance(seg, Face):
                 return QGMS.emoji(seg.face_id)
+            elif isinstance(seg, Raw) and seg.raw.__module__.startswith(self.prefix):
+                return cast(QGMS, seg.raw)
             return QGMS.text(seg.alternative())
 
         async def send(self, *segs: Model, use_fallback: bool = False) -> List[Any]:
@@ -464,7 +471,8 @@ with suppress(ImportError):
                     call_result.append(
                         await self.bot.send(self.event, seg.raw)
                     )
-                msg.append(await self.convert(seg))
+                else:
+                    msg.append(await self.convert(seg))
             if msg:
                 call_result.append(await self.bot.send(self.event, msg))
             return call_result

@@ -1,7 +1,7 @@
 from collections import deque
-from typing import Union
+from typing import Deque, Union
 
-from nonebot.adapters import Message, MessageSegment
+from nonebot.adapters import MessageSegment
 from .models import (
     Face,               File,               Image,              Location,
     Mention,            Model,              Raw,                Reply,
@@ -12,7 +12,7 @@ from .models import (
 
 class MsgBufManager:
     def __init__(self) -> None:
-        self.msgbuf = deque()
+        self.msgbuf: Deque[Model] = deque()
 
     def __lshift__(self, __o: Model):
         self.msgbuf.append(__o)
@@ -33,7 +33,7 @@ class MsgBufManager:
             self.msgbuf.pop()
         return self
     
-    def raw(self, raw: Union[str, MessageSegment, Message]):
+    def raw(self, raw: Union[str, MessageSegment]):
         """追加原始消息/消息段"""
         self.msgbuf.append(Raw(raw))
         return self

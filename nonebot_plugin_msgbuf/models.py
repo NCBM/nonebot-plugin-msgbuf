@@ -4,7 +4,7 @@ from os.path import basename
 from pathlib import Path
 from typing import Literal, Union
 
-from nonebot.adapters import Message, MessageSegment
+from nonebot.adapters import MessageSegment
 
 SupportedFileData = Union[str, Path, bytes, BytesIO]
 
@@ -41,7 +41,7 @@ class Single(Body):
 
 @dataclass
 class Raw(Mutex):
-    raw: Union[str, Message, MessageSegment]
+    raw: Union[str, MessageSegment]
 
     def alternative(self) -> str:
         return str(self.raw)
