@@ -39,6 +39,8 @@ class BaseProxy(Generic[_BotT, _EventT]):
 
     prefix: str = ""
 
+    registered_proxies: List[Type["BaseProxy"]] = []
+
     def __init__(
         self, bot: _BotT, event: _EventT, *args,
         specs: int = 0, **kwargs
@@ -46,6 +48,9 @@ class BaseProxy(Generic[_BotT, _EventT]):
         self.bot = bot
         self.event = event
         self.specs = specs
+
+    def __init_subclass__(cls) -> None:
+        BaseProxy.registered_proxies.append(cls)
 
     async def convert(self, seg: Model) -> str:
         return seg.alternative()
@@ -68,13 +73,7 @@ class BaseProxy(Generic[_BotT, _EventT]):
         ]
 
 
-registered_proxies: List[Type[BaseProxy]] = []
 _ProxyT = TypeVar("_ProxyT", bound=Type[BaseProxy])
-
-
-def register_proxy(proxy: _ProxyT) -> _ProxyT:
-    registered_proxies.append(proxy)
-    return proxy
 
 
 with suppress(ImportError):
@@ -86,7 +85,6 @@ with suppress(ImportError):
         MessageEvent as OB11MsgEv
     )
 
-    @register_proxy
     class OB11Proxy(BaseProxy[OB11Bot, OB11Event]):
         prefix = "nonebot.adapters.onebot.v11"
 
@@ -348,7 +346,6 @@ with suppress(ImportError):
         MessageSegment as OB12MS
     )
 
-    @async_fish_cache()
     async def _ob12_upload_file(bot: OB12Bot, file: SupportedFileData, name: str) -> str:
         if isinstance(file, str):
             if "://" in file:
@@ -366,7 +363,6 @@ with suppress(ImportError):
         logger.info(f"成功上传文件 {name!r}")
         return res["file_id"]
 
-    @register_proxy
     class OB12Proxy(BaseProxy[OB12Bot, OB12Event]):
         prefix = "nonebot.adapters.onebot.v12"
 
@@ -433,7 +429,6 @@ with suppress(ImportError):
         MessageSegment as QGMS
     )
 
-    @register_proxy
     class QGProxy(BaseProxy[QGBot, QGEvent]):
         prefix = "nonebot.adapters.qqguild"
 
@@ -485,7 +480,11 @@ def find_proxy(bot: _BotT) -> Type[BaseProxy[_BotT, Any]]:
 
 
 def find_proxy(bot: Bot) -> Type[BaseProxy]:
-    for p in registered_proxies:
-        if bot.__module__.startswith(p.prefix):
-            return p
-    return BaseProxy
+    return next(
+        (
+            p
+            for p in BaseProxy.registered_proxies
+            if bot.__module__.startswith(p.prefix)
+        ),
+        BaseProxy,
+    )
