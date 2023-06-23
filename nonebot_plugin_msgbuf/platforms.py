@@ -517,6 +517,8 @@ with suppress(ImportError):
                 if seg.tg_user is None:
                     return TGRichTextMS.mention(f"@{seg.user_id}")
                 return TGRichTextMS.text_mention(seg.user_id, seg.tg_user)
+            elif isinstance(seg, Face):
+                return TGFileMS.sticker(seg.face_id)
             elif isinstance(seg, Voice):
                 if isinstance(seg.voice, BytesIO):
                     return TGFileMS.voice(seg.voice.getvalue())
