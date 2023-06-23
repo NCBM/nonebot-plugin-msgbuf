@@ -4,7 +4,7 @@ from contextlib import suppress
 from io import BytesIO
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Deque, Generic, List, Literal, NoReturn, Optional, Tuple, Type, TypeVar, cast, overload
+from typing import Any, Deque, Generic, List, Literal, NoReturn, Optional, Tuple, Type, TypeVar, Union, cast, overload
 from nonebot import logger
 
 from nonebot.adapters import Bot, Event
@@ -444,8 +444,8 @@ with suppress(ImportError):
                 return QGMS.image(seg.image) if isinstance(seg.image, str) else QGMS.file_image(seg.image)
             elif isinstance(seg, Mention):
                 if seg.domain == "channel":
-                    return QGMS.mention_channel(int(seg.user_id)) 
-                return  QGMS.mention_user(int(seg.user_id))
+                    return QGMS.mention_channel(int(seg.user_id))
+                return QGMS.mention_user(int(seg.user_id))
             elif isinstance(seg, Reply):
                 return QGMS.reference(seg.msg_id)
             elif isinstance(seg, Face):
@@ -479,6 +479,98 @@ with suppress(ImportError):
 
     @overload
     def find_proxy(bot: QGBot) -> Type[QGProxy]:
+        ...
+
+
+with suppress(ImportError):
+    from nonebot.adapters.telegram import (
+        Bot as TGBot,
+        Event as TGEvent,
+        Message as TGMessage,
+        MessageSegment as TGMS
+    )
+    from nonebot.adapters.telegram.message import (
+        Entity as TGRichTextMS,
+        UnCombinFile as TGFileMS
+    )
+
+    class TGProxy(BaseProxy[TGBot, TGEvent]):
+        prefix = "nonebot.adapters.telegram"
+
+        async def convert(self, seg: Model) -> TGMS:
+            if isinstance(seg, Text):
+                if not seg.rich:
+                    return TGRichTextMS.text(seg.text)
+                elif seg.rich in (
+                    "hashtag", "cashtag", "bot_command", "url", "email", "phone_number",
+                    "bold", "italic", "underline", "strikethrough", "spoiler", "code", "pre"
+                ):
+                    return getattr(TGRichTextMS, seg.rich)(seg.text)
+                logger.warning(f"未识别的富文本格式 {seg.rich!r}，将作为纯文本发送")
+            elif isinstance(seg, Image):
+                if isinstance(seg.image, BytesIO):
+                    return TGFileMS.photo(seg.image.getvalue())
+                elif isinstance(seg.image, bytes):
+                    return TGFileMS.photo(seg.image)
+                return TGFileMS.photo(File(seg.image, seg.name).local_path())
+            elif isinstance(seg, Mention):
+                if seg.tg_user is None:
+                    return TGRichTextMS.mention(f"@{seg.user_id}")
+                return TGRichTextMS.text_mention(seg.user_id, seg.tg_user)
+            elif isinstance(seg, Voice):
+                if isinstance(seg.voice, BytesIO):
+                    return TGFileMS.voice(seg.voice.getvalue())
+                elif isinstance(seg.voice, bytes):
+                    return TGFileMS.voice(seg.voice)
+                return TGFileMS.voice(File(seg.voice, seg.name).local_path())
+            elif isinstance(seg, Video):
+                if isinstance(seg.video, BytesIO):
+                    return TGFileMS.video(seg.video.getvalue())
+                elif isinstance(seg.video, bytes):
+                    return TGFileMS.video(seg.video)
+                return TGFileMS.video(File(seg.video, seg.name).local_path())
+            elif isinstance(seg, File):
+                if isinstance(seg.file, BytesIO):
+                    return TGFileMS.document(seg.file.getvalue())
+                elif isinstance(seg.file, bytes):
+                    return TGFileMS.document(seg.file)
+                return TGFileMS.document(seg.local_path())
+            elif isinstance(seg, Location):
+                return TGMS.location(seg.lat, seg.lon)
+            elif isinstance(seg, Raw) and seg.raw.__module__.startswith(self.prefix):
+                return cast(TGMS, seg.raw)
+            return TGRichTextMS.text(seg.alternative())
+
+        async def send(self, *segs: Model, use_fallback: bool = False) -> List[Any]:
+            if use_fallback:
+                return await super().send(*segs)
+            call_result = []
+            msg = TGMessage()
+            reply = None
+            for seg in segs:
+                if isinstance(seg, Mutex):
+                    await self.flush_with_log(msg, call_result, f"{seg.__class__.__name__} 类型与 Body 类型冲突，无法在一条内发送！")
+                    if isinstance(seg, Raw) and isinstance(
+                        seg.raw, (str, TGMS, TGMessage)
+                    ):
+                        call_result.append(
+                            await self.bot.send(self.event, seg.raw, reply_to_message_id=reply)
+                        )
+                    else:
+                        call_result.append(
+                            await self.bot.send(self.event, await self.convert(seg), reply_to_message_id=reply)
+                        )
+                else:
+                    if isinstance(seg, Reply):
+                        reply = int(seg.msg_id)
+                        continue
+                    msg.append(await self.convert(seg))
+            if msg:
+                call_result.append(await self.bot.send(self.event, msg, reply_to_message_id=reply))
+            return call_result
+
+    @overload
+    def find_proxy(bot: TGBot) -> Type[TGProxy]:
         ...
 
 

@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from io import BytesIO
 from os.path import basename
 from pathlib import Path
-from typing import Literal, Union
+from typing import TYPE_CHECKING, Any, Literal, Optional, Union
 
 from nonebot.adapters import MessageSegment
 
@@ -50,6 +50,7 @@ class Raw(Mutex):
 @dataclass
 class Text(Body):
     text: str
+    rich: Optional[str] = None
 
     def alternative(self) -> str:
         return self.text
@@ -84,6 +85,21 @@ class Image(Body):
 class Mention(Body):
     user_id: str
     domain: str = ""
+    if TYPE_CHECKING:
+        from nonebot.adapters.telegram.model import User
+        tg_user: Optional[User] = None
+    else:
+        tg_user: Any = None
+
+    def __post_init__(self) -> None:
+        if self.tg_user is None:
+            return
+        self.user_id = (
+            self.user_id or self.tg_user.username
+            or self.tg_user.first_name
+            if self.tg_user.last_name is None
+            else f"{self.tg_user.first_name} {self.tg_user.last_name}"
+        )
 
     def alternative(self) -> str:
         return f"@{self.user_id} "
