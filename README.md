@@ -40,6 +40,7 @@ _✨ 适用于 NoneBot2 插件的被动消息构造集成 ✨_
 | OneBot V11 ([Go-CQHTTP](https://github.com/Mrs4s/go-cqhttp) 拓展) |   ✅   |  ✅  |   🟨   |  🟨  |  🟨  |  ✅  |  ✅  |  ✅  |  ✅  |    ✅    |
 |                           OneBot V12                           |   ✅   |  ✅  |   🟨   |  🟨  |  ❌  |  ✅  |  ✅  |  ✅  |  ❌  |    ✅    |
 |                            QQ 频道                            |   ✅   |  ✅  |   🟨   |  🟨  |  🟨  |  ❌  |  ❌  |  ❌  |  ❌  |    ❌    |
+|                            Telegram                            |   ✅   |  ✅  |   🟨   |  🟨  |  🟨  |  ✅  |  ✅  |  ✅  |  ❌  |    ✅    |
 |                            未写明的                            |   ✅   |  ❌  |   ❌   |  ❌  |  ❌  |  ❌  |  ❌  |  ❌  |  ❌  |    ❌    |
 
 ## 安装
@@ -51,12 +52,6 @@ nb plugin install nonebot-plugin-msgbuf
 ```
 
 ## 使用
-
-> 关于 `require()` 的使用问题：
->
-> NoneBot2 插件的**首次**导入**必须**通过 NoneBot2 自身的方式（包括但不限于 `require()`, `load_plugin()` 等）完成，否则之后使用 NoneBot2 方式导入该插件的插件将**无法**正常工作。
->
-> NoneBot2 插件体系要求**必须**使用 `require()` 加载插件依赖。
 
 ### 竞品对比
 
