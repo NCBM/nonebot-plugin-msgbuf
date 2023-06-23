@@ -22,7 +22,7 @@ from .platforms import _BotT, _EventT, Specs, find_proxy
 _extra_meta_source = {
     "type": "library",
     "homepage": "https://github.com/NCBM/nonebot-plugin-msgbuf",
-    "supported_adapters": {"~onebot.v11", "~onebot.v12", "~qqguild"}
+    "supported_adapters": {"~onebot.v11", "~onebot.v12", "~qqguild", "~telegram"}
 }
 
 if (
@@ -37,7 +37,7 @@ else:
     _extra_meta = {"extra": _extra_meta_source}
 
 __plugin_meta__ = PluginMetadata(
-    name="信鸽巴夫",
+    name="不雅信达",
     description="适用于 NoneBot2 插件的被动消息构造集成",
     usage="无",
     **_extra_meta
